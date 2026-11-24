@@ -1,6 +1,8 @@
 import asyncio
 import os
 import socket
+import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -202,3 +204,61 @@ def test_mcp_uses_same_session_and_jobs(app):
         finally:
             server.should_exit = True
             thread.join(timeout=15)
+
+
+def test_interrupted_capture_is_not_replayed(tmp_path):
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    env = {
+        **os.environ,
+        "TEMWORKBENCH_OPERATOR_TOKEN": "test-operator",
+        "TEMWORKBENCH_AGENT_TOKEN": "test-agent",
+    }
+    args = [
+        sys.executable,
+        "-m",
+        "temworkbench.cli",
+        "--port",
+        str(port),
+        "--data",
+        str(tmp_path),
+    ]
+    request = command("acquire_image", exposure_s=2)
+
+    def wait_for_service(service, client):
+        deadline = time.monotonic() + 30
+        while service.poll() is None and time.monotonic() < deadline:
+            try:
+                if client.get("/").is_success:
+                    return
+            except httpx.ConnectError:
+                pass
+            time.sleep(0.05)
+        pytest.fail("The workbench failed to start")
+
+    with httpx.Client(base_url=f"http://127.0.0.1:{port}", trust_env=False) as client:
+        with subprocess.Popen(args, env=env) as service:
+            try:
+                wait_for_service(service, client)
+                assert submit(client, request).status_code == 202
+                deadline = time.monotonic() + 1.5
+                while time.monotonic() < deadline:
+                    if client.get(path(request), headers=AGENT).json()["status"] == "running":
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("Capture did not enter the running state")
+            finally:
+                service.kill()
+
+        with subprocess.Popen(args, env=env) as service:
+            try:
+                wait_for_service(service, client)
+                recovered = finish(client, request)
+                assert recovered["status"] == "failed"
+                assert recovered["dataset"] is None
+                assert submit(client, request).json() == recovered
+                assert not list(tmp_path.glob("datasets/**/image.*"))
+            finally:
+                service.terminate()
