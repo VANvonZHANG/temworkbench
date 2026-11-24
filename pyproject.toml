@@ -1,0 +1,36 @@
+[project]
+name = "temworkbench"
+version = "0.1.0"
+description = "A simulator-first TEM acquisition workbench"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = "GPL-3.0-only"
+dependencies = [
+    "fastapi",
+    "fastmcp==4.2.5",
+    "filelock",
+    "httpx",
+    "hyperspy==2.5.0",
+    "numpy",
+    "pillow",
+    "pydantic>=2",
+    "tifffile",
+    "uvicorn[standard]",
+]
+
+[dependency-groups]
+device = ["instamatic==2.2.2"]
+notebook = ["jupyterlab", "ipympl"]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
