@@ -68,12 +68,15 @@ def test_preview_and_capture_survive_retry_and_restart(app):
             socket.send_json({"exposure_s": 0.01, "binning": 4})
             assert socket.receive_bytes().startswith(b"\xff\xd8")
         assert not client.get("/api/state?session_id=test").is_success
+        invalid = command("acquire_image", comment="invalid\0comment")
+        assert submit(client, invalid).status_code == 422
 
-        request = command("acquire_image", exposure_s=0.03, binning=2)
+        comment = "网格 A3，低倍定位"
+        request = command("acquire_image", exposure_s=0.03, binning=2, comment=comment)
         with ThreadPoolExecutor(max_workers=2) as threads:
             responses = list(threads.map(lambda _: submit(client, request), range(2)))
         assert {response.status_code for response in responses} == {202}
-        conflict = {**request, "command": {**request["command"], "binning": 4}}
+        conflict = {**request, "command": {**request["command"], "comment": "另一条备注"}}
         assert submit(client, conflict).status_code == 409
         job = finish(client, request)
         assert job["status"] == "succeeded", job
@@ -83,6 +86,7 @@ def test_preview_and_capture_survive_retry_and_restart(app):
         assert signal.axes_manager.signal_axes[0].scale == 2 * baseline["pixel_size_nm"]
         assert signal.metadata.Acquisition_instrument.TEM.beam_energy == baseline["beam_energy_kev"]
         assert signal.original_metadata.instamatic.ImageBinsize == 2
+        assert signal.original_metadata.instamatic.ImageComment == comment
         assert signal.original_metadata.acquisition.command_id == request["command_id"]
         raw_tiff = (
             client.get(f"{path(request)}/files/tiff", headers=AGENT).raise_for_status().content

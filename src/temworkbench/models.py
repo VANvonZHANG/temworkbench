@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SessionId = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")]
 Role = Literal["operator", "agent"]
+CaptureComment = Annotated[str, Field(max_length=500, pattern=r"^[^\x00]*$")]
 
 
 class Model(BaseModel):
@@ -39,6 +40,7 @@ class DeviceState(Model):
 
 class Acquire(Exposure):
     kind: Literal["acquire_image"]
+    comment: CaptureComment = ""
 
 
 class SetMagnification(Model):

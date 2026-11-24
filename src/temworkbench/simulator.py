@@ -68,8 +68,10 @@ class Simulator:
             "pixel_size_nm": self.config.calibration[mode]["pixelsize"].get(magnification),
         }
 
-    def capture(self, exposure_s, binning):
-        pixels, header = self.ctrl.get_image(exposure=exposure_s, binsize=binning, header_keys=())
+    def capture(self, exposure_s, binning, comment):
+        pixels, header = self.ctrl.get_image(
+            exposure=exposure_s, binsize=binning, comment=comment, header_keys=()
+        )
         pixels = np.ascontiguousarray(pixels, dtype=np.uint8)
         return {
             "pixels": base64.b64encode(pixels).decode("ascii"),
@@ -83,7 +85,9 @@ class Simulator:
         kind = request["kind"]
         ctrl = self.ctrl
         if kind == "acquire_image":
-            return self.capture(request["exposure_s"], request["binning"])
+            return self.capture(
+                request["exposure_s"], request["binning"], request.get("comment", "")
+            )
         if kind == "set_magnification":
             ctrl.magnification.value = request["value"]
         elif kind == "set_brightness":
