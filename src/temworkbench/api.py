@@ -6,10 +6,11 @@ from secrets import compare_digest
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastmcp import FastMCP
 from filelock import FileLock
+from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from .device import DeviceError, SimulatorProcess
@@ -193,6 +194,32 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
     @app.post("/api/operator/stop", dependencies=[Depends(require_operator)])
     def stop():
         return workbench.stop()
+
+    @app.websocket("/api/preview")
+    async def preview(socket: WebSocket):
+        await socket.accept()
+        try:
+            async with asyncio.timeout(5):
+                authorization = await socket.receive_text()
+            if identify(authorization) != "operator":
+                await socket.close(code=1008)
+                return
+            while True:
+                raw = await socket.receive_text()
+                try:
+                    exposure = Exposure.model_validate_json(raw)
+                    frame = await run_in_threadpool(workbench.preview, exposure)
+                except (Rejected, DeviceError, ValidationError) as error:
+                    await socket.send_json({"error": str(error)})
+                else:
+                    await socket.send_bytes(frame)
+        except WebSocketDisconnect:
+            pass
+        except TimeoutError:
+            await socket.close(code=1008)
+        except Exception:
+            LOGGER.exception("Preview failed")
+            await socket.close(code=1011)
 
     app.mount("/mcp", mcp_http)
     return app
