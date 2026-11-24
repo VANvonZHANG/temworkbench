@@ -1,10 +1,13 @@
+import io
 import sqlite3
 import tempfile
 import time
 from pathlib import Path
 
 import hyperspy.api as hs
+import numpy as np
 import tifffile
+from PIL import Image
 
 from .device import Frame
 from .models import Dataset, Exposure, Job, JobRef
@@ -120,3 +123,10 @@ def save_dataset(root: Path, ref: JobRef, frame: Frame, exposure: Exposure) -> D
         tifffile.imwrite(stage / tiff.name, frame.pixels, photometric="minisblack")
         stage.rename(hspy.parent)
     return Dataset(hspy=hspy.as_posix(), tiff=tiff.as_posix())
+
+
+def preview_jpeg(frame: Frame) -> bytes:
+    buffer = io.BytesIO()
+    pixels = np.clip(frame.pixels, 0, 255).astype(np.uint8)
+    Image.fromarray(pixels).save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
