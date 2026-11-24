@@ -155,6 +155,10 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
     async def offline(_request, error):
         return JSONResponse({"detail": str(error)}, status_code=503)
 
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(Path(__file__).with_name("index.html"))
+
     @app.get("/api/state")
     def state(session_id: SessionId, _actor: Authenticated) -> dict:
         return {"session_id": session_id, **workbench.get_state()}
