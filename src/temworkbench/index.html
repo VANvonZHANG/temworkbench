@@ -51,6 +51,7 @@ dd { margin: 0; font-variant-numeric: tabular-nums; }
       <label>Binning
         <select id="binning"><option>1</option><option>2</option><option>4</option></select>
       </label>
+      <label>采集备注（可选） <input id="comment" type="text" maxlength="500"></label>
       <button id="live" type="button">开始预览</button>
       <button id="capture" class="primary">取图保存</button>
     </form>
@@ -248,7 +249,7 @@ camera.onsubmit = async event => {
   try {
     const body = JSON.stringify({
       session_id: session, command_id: commandId,
-      command: {kind: "acquire_image", ...exposure()},
+      command: {kind: "acquire_image", ...exposure(), comment: element("comment").value},
     });
     let result;
     try { result = await api("/api/commands", {method: "POST", body}); }
