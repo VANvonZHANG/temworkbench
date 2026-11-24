@@ -34,9 +34,16 @@ class Client:
         response = self.http.post("/api/commands", json=request.model_dump(mode="json"))
         return Job.model_validate(response.raise_for_status().json())
 
-    def acquire(self, *, exposure_s: float = 0.1, binning=1, command_id: UUID | None = None) -> Job:
+    def acquire(
+        self,
+        *,
+        exposure_s: float = 0.1,
+        binning=1,
+        comment: str = "",
+        command_id: UUID | None = None,
+    ) -> Job:
         return self.submit(
-            Acquire(kind="acquire_image", exposure_s=exposure_s, binning=binning),
+            Acquire(kind="acquire_image", exposure_s=exposure_s, binning=binning, comment=comment),
             command_id=command_id,
         )
 
