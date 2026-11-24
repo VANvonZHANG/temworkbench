@@ -8,16 +8,23 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from fastmcp import FastMCP
 from filelock import FileLock
 from starlette.concurrency import run_in_threadpool
 
 from .device import DeviceError, SimulatorProcess
 from .models import (
+    Acquire,
+    Exposure,
     Job,
     JobRef,
+    MoveStage,
     Request,
     Role,
     SessionId,
+    SetBrightness,
+    SetDefocus,
+    SetMagnification,
 )
 from .storage import dataset_paths
 from .workbench import Rejected, UnknownJob, Workbench
@@ -29,6 +36,7 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
     if not operator_token or not agent_token or operator_token == agent_token:
         raise ValueError("Operator and agent require distinct, nonempty tokens")
 
+    mcp = FastMCP("TEM Workbench simulator")
     workbench: Workbench
 
     def identify(authorization: str) -> Role | None:
@@ -38,6 +46,46 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
         if compare_digest(token, f"Bearer {agent_token}".encode()):
             return "agent"
         return None
+
+    @mcp.tool
+    def get_state(session_id: SessionId) -> dict:
+        """Read cached microscope and camera state for a session."""
+        return {"session_id": session_id, **workbench.get_state()}
+
+    @mcp.tool
+    def get_job(session_id: SessionId, command_id: UUID) -> Job:
+        """Read an acquisition or approval job by command ID."""
+        return workbench.get_job(JobRef(session_id=session_id, command_id=command_id))
+
+    @mcp.tool
+    def list_jobs(session_id: SessionId) -> list[Job]:
+        """List acquisition and approval jobs for a session."""
+        return workbench.list_jobs(session_id)
+
+    @mcp.tool
+    def acquire_image(session_id: SessionId, command_id: UUID, exposure: Exposure) -> Job:
+        """Queue a single simulated acquisition and return its job ID."""
+        return workbench.submit(
+            Request(
+                session_id=session_id,
+                command_id=command_id,
+                command=Acquire(kind="acquire_image", **exposure.model_dump()),
+            ),
+            "agent",
+        )
+
+    @mcp.tool
+    def request_change(
+        session_id: SessionId,
+        command_id: UUID,
+        command: MoveStage | SetBrightness | SetDefocus | SetMagnification,
+    ) -> Job:
+        """Ask the active operator to approve a simulated microscope change."""
+        return workbench.submit(
+            Request(session_id=session_id, command_id=command_id, command=command), "agent"
+        )
+
+    mcp_http = mcp.http_app(path="/", stateless_http=True)
 
     async def expire_approvals():
         while True:
@@ -53,7 +101,7 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
             active: Workbench | None = None
             try:
                 active = workbench = Workbench(root, device)
-                async with asyncio.TaskGroup() as tasks:
+                async with mcp_http.lifespan(app), asyncio.TaskGroup() as tasks:
                     expiry = tasks.create_task(expire_approvals())
                     try:
                         yield
@@ -67,6 +115,18 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
                     device.close()
 
     app = FastAPI(title="TEM Workbench", lifespan=lifespan, docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def protect_mcp(request, call_next):
+        if (request.url.path == "/mcp" or request.url.path.startswith("/mcp/")) and identify(
+            request.headers.get("authorization", "")
+        ) != "agent":
+            return JSONResponse(
+                {"detail": "Agent token required"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
     def role(authorization: str = Header(default="")) -> Role:
         actor = identify(authorization)
@@ -134,4 +194,5 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
     def stop():
         return workbench.stop()
 
+    app.mount("/mcp", mcp_http)
     return app
