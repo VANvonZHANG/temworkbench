@@ -1,15 +1,21 @@
+import asyncio
 import os
+import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
+from threading import Thread
 from uuid import uuid4
 
+import httpx
 import hyperspy.api as hs
 import numpy as np
 import pytest
 import tifffile
+import uvicorn
 from fastapi.testclient import TestClient
+from fastmcp import Client as MCPClient
 
 from temworkbench.api import build_app
 
@@ -149,3 +155,50 @@ def test_approval_controls_stop_and_limits(app):
         assert finish(client, queued)["status"] == "canceled"
         assert finish(client, capturing)["status"] == "succeeded"
         assert submit(client, command("acquire_image"), OPERATOR).json()["status"] == "rejected"
+
+
+def test_mcp_uses_same_session_and_jobs(app):
+    async def tools(http, url):
+        async with MCPClient(f"{url}/mcp/", auth="test-agent") as client:
+            names = {tool.name for tool in await client.list_tools()}
+            assert names == {"get_state", "acquire_image", "get_job", "list_jobs", "request_change"}
+            status = await client.call_tool("get_state", {"session_id": "test"})
+            assert status.data["device"]["camera"] == "simulate"
+
+            denied = command("set_defocus", ticks=-50)
+            result = await client.call_tool("request_change", denied)
+            assert result.structured_content["status"] == "rejected"
+
+            request = command("acquire_image")
+            ref = {key: request[key] for key in ("session_id", "command_id")}
+            args = {**ref, "exposure": {"exposure_s": 0.02, "binning": 4}}
+            submitted = await client.call_tool("acquire_image", args)
+            assert submitted.structured_content["command_id"] == request["command_id"]
+            job = await asyncio.to_thread(finish, http, request)
+            assert job["status"] == "succeeded", job
+            assert (await client.call_tool("get_job", ref)).structured_content == job
+            assert (await client.call_tool("acquire_image", args)).structured_content == job
+            listed = await client.call_tool("list_jobs", {"session_id": "test"})
+            assert {entry["command_id"] for entry in listed.structured_content["result"]} == {
+                denied["command_id"],
+                request["command_id"],
+            }
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        url = f"http://127.0.0.1:{port}"
+        server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+        thread = Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+        thread.start()
+        try:
+            deadline = time.monotonic() + 40
+            while thread.is_alive() and not server.started and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert server.started, "Uvicorn startup failed"
+            with httpx.Client(base_url=url, trust_env=False) as http:
+                assert http.post("/mcp/").status_code == 401
+                asyncio.run(tools(http, url))
+        finally:
+            server.should_exit = True
+            thread.join(timeout=15)
