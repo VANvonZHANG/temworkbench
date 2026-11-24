@@ -1,8 +1,13 @@
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 
-from .models import Job, JobRef
+import hyperspy.api as hs
+import tifffile
+
+from .device import Frame
+from .models import Dataset, Exposure, Job, JobRef
 
 
 class Events:
@@ -53,3 +58,65 @@ class Events:
             (session_id, session_id),
         )
         return [Job.model_validate_json(row[0]) for row in rows]
+
+
+def dataset_paths(root: Path, ref: JobRef) -> tuple[Path, Path]:
+    directory = root / f"session-{ref.session_id}" / str(ref.command_id)
+    return directory / "image.hspy", directory / "image.tiff"
+
+
+def published_dataset(root: Path, ref: JobRef) -> Dataset | None:
+    hspy, tiff = dataset_paths(root, ref)
+    if hspy.is_file() and tiff.is_file():
+        return Dataset(hspy=hspy.as_posix(), tiff=tiff.as_posix())
+    return None
+
+
+def save_dataset(root: Path, ref: JobRef, frame: Frame, exposure: Exposure) -> Dataset:
+    hspy, tiff = dataset_paths(root, ref)
+    hspy.parent.parent.mkdir(parents=True, exist_ok=True)
+    state = frame.state
+    signal = hs.signals.Signal2D(frame.pixels)
+    if state.pixel_size_nm is not None:
+        for axis, name in zip(signal.axes_manager.signal_axes, ("x", "y"), strict=True):
+            axis.name = name
+            axis.scale = state.pixel_size_nm * exposure.binning
+            axis.units = "nm"
+    signal.metadata.add_dictionary(
+        {
+            "General": {"title": f"TEM {ref.command_id}"},
+            "Acquisition_instrument": {
+                "TEM": {
+                    "microscope": state.microscope,
+                    "beam_energy": state.beam_energy_kev,
+                    "magnification": state.magnification,
+                    "Stage": {
+                        "x": state.stage.x_nm / 1000,
+                        "y": state.stage.y_nm / 1000,
+                        "z": state.stage_z_nm / 1000,
+                        "tilt_alpha": state.tilt_alpha_deg,
+                    },
+                    "Detector": {
+                        "Camera": {
+                            "name": state.camera,
+                            "exposure": exposure.exposure_s,
+                            "binning": exposure.binning,
+                        }
+                    },
+                },
+            },
+        }
+    )
+    signal.original_metadata.add_dictionary(
+        {
+            "instamatic": frame.header,
+            "state_snapshot": state.model_dump(mode="json"),
+            "acquisition": ref.model_dump(mode="json"),
+        }
+    )
+    with tempfile.TemporaryDirectory(prefix=".capture-", dir=hspy.parent.parent) as staging:
+        stage = Path(staging)
+        signal.save(stage / hspy.name, overwrite=True)
+        tifffile.imwrite(stage / tiff.name, frame.pixels, photometric="minisblack")
+        stage.rename(hspy.parent)
+    return Dataset(hspy=hspy.as_posix(), tiff=tiff.as_posix())
