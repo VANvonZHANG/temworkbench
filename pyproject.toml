@@ -18,6 +18,9 @@ dependencies = [
     "uvicorn[standard]",
 ]
 
+[project.scripts]
+temworkbench = "temworkbench.cli:main"
+
 [dependency-groups]
 device = ["instamatic==2.2.2"]
 notebook = ["jupyterlab", "ipympl"]
