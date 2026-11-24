@@ -83,3 +83,69 @@ def test_preview_and_capture_survive_retry_and_restart(app):
 
     with TestClient(app) as restarted:
         assert submit(restarted, request).json() == job
+
+
+def test_approval_controls_stop_and_limits(app):
+    with TestClient(app) as client:
+        baseline = state(client)["device"]
+        set_brightness = command("set_brightness", value=23456)
+        no_operator = submit(client, set_brightness).json()
+        assert no_operator["status"] == "rejected"
+        assert client.get("/api/operator/approvals", headers=OPERATOR).json() == []
+        assert submit(client, set_brightness).json() == no_operator
+
+        stage = command("move_stage", x_nm=1234, y_nm=-4567)
+        assert submit(client, stage).json()["status"] == "pending_approval"
+        assert state(client)["device"]["stage"] == baseline["stage"]
+        decision = f"/api/operator/approvals/test/{stage['command_id']}?allow=true"
+        assert client.post(decision, headers=AGENT).status_code == 403
+        assert client.post(decision, headers=OPERATOR).json()["status"] == "queued"
+        assert finish(client, stage)["status"] == "succeeded"
+        assert state(client)["device"]["stage"] == {"x_nm": 1234, "y_nm": -4567}
+        assert client.post(decision, headers=OPERATOR).json()["status"] == "succeeded"
+
+        denied = command("set_brightness", value=23567)
+        assert submit(client, denied).json()["status"] == "pending_approval"
+        deny = f"/api/operator/approvals/test/{denied['command_id']}?allow=false"
+        assert client.post(deny, headers=OPERATOR).json()["status"] == "rejected"
+        assert state(client)["device"]["brightness"] == baseline["brightness"]
+
+        adjustments = [
+            ("set_brightness", {"value": 12000}, "brightness", 12000),
+            ("set_defocus", {"ticks": -50}, "defocus_ticks", -50),
+            (
+                "set_magnification",
+                {"value": baseline["magnifications"][0]},
+                "magnification",
+                baseline["magnifications"][0],
+            ),
+        ]
+        for kind, params, field, expected in adjustments:
+            request = command(kind, **params)
+            assert submit(client, request, OPERATOR).status_code == 202
+            assert finish(client, request)["status"] == "succeeded"
+            assert state(client)["device"][field] == expected
+        assert submit(client, command("move_stage", x_nm=100001, y_nm=0)).status_code == 422
+        assert submit(client, command("acquire_image", exposure_s=3)).status_code == 422
+
+        pending = command("set_defocus", ticks=15)
+        assert submit(client, pending).json()["status"] == "pending_approval"
+        capturing = command("acquire_image", exposure_s=1.5)
+        assert submit(client, capturing, OPERATOR).status_code == 202
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            current = client.get(path(capturing), headers=OPERATOR).json()
+            if current["status"] == "running":
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("Capture did not start")
+        queued = command("acquire_image")
+        assert submit(client, queued, OPERATOR).json()["status"] == "queued"
+        assert client.post("/api/operator/stop", headers=AGENT).status_code == 403
+        assert client.post("/api/operator/stop", headers=OPERATOR).json()["beam_blanked"]
+        assert state(client)["stopped"] is True
+        assert finish(client, pending)["status"] == "canceled"
+        assert finish(client, queued)["status"] == "canceled"
+        assert finish(client, capturing)["status"] == "succeeded"
+        assert submit(client, command("acquire_image"), OPERATOR).json()["status"] == "rejected"
