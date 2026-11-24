@@ -120,7 +120,12 @@ def save_dataset(root: Path, ref: JobRef, frame: Frame, exposure: Exposure) -> D
     with tempfile.TemporaryDirectory(prefix=".capture-", dir=hspy.parent.parent) as staging:
         stage = Path(staging)
         signal.save(stage / hspy.name, overwrite=True)
-        tifffile.imwrite(stage / tiff.name, frame.pixels, photometric="minisblack")
+        tifffile.imwrite(
+            stage / tiff.name,
+            frame.pixels,
+            photometric="minisblack",
+            metadata={"ImageComment": frame.header["ImageComment"]},
+        )
         stage.rename(hspy.parent)
     return Dataset(hspy=hspy.as_posix(), tiff=tiff.as_posix())
 

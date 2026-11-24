@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import socket
 import subprocess
@@ -91,7 +92,9 @@ def test_preview_and_capture_survive_retry_and_restart(app):
         raw_tiff = (
             client.get(f"{path(request)}/files/tiff", headers=AGENT).raise_for_status().content
         )
-        np.testing.assert_array_equal(tifffile.imread(BytesIO(raw_tiff)), signal.data)
+        with tifffile.TiffFile(BytesIO(raw_tiff)) as tiff:
+            np.testing.assert_array_equal(tiff.asarray(), signal.data)
+            assert json.loads(tiff.pages[0].description)["ImageComment"] == comment
 
     with TestClient(app) as restarted:
         assert submit(restarted, request).json() == job
