@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from .device import DeviceError, SimulatorProcess
 from .models import (
     Acquire,
+    CaptureComment,
     Exposure,
     Job,
     JobRef,
@@ -64,13 +65,15 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
         return workbench.list_jobs(session_id)
 
     @mcp.tool
-    def acquire_image(session_id: SessionId, command_id: UUID, exposure: Exposure) -> Job:
+    def acquire_image(
+        session_id: SessionId, command_id: UUID, exposure: Exposure, comment: CaptureComment = ""
+    ) -> Job:
         """Queue a single simulated acquisition and return its job ID."""
         return workbench.submit(
             Request(
                 session_id=session_id,
                 command_id=command_id,
-                command=Acquire(kind="acquire_image", **exposure.model_dump()),
+                command=Acquire(kind="acquire_image", comment=comment, **exposure.model_dump()),
             ),
             "agent",
         )

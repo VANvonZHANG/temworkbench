@@ -180,11 +180,17 @@ def test_mcp_uses_same_session_and_jobs(app):
 
             request = command("acquire_image")
             ref = {key: request[key] for key in ("session_id", "command_id")}
-            args = {**ref, "exposure": {"exposure_s": 0.02, "binning": 4}}
+            args = {
+                **ref,
+                "exposure": {"exposure_s": 0.02, "binning": 4},
+                "comment": "代理采集备注",
+            }
             submitted = await client.call_tool("acquire_image", args)
             assert submitted.structured_content["command_id"] == request["command_id"]
             job = await asyncio.to_thread(finish, http, request)
             assert job["status"] == "succeeded", job
+            signal = hs.load(job["dataset"]["hspy"])
+            assert signal.original_metadata.instamatic.ImageComment == args["comment"]
             assert (await client.call_tool("get_job", ref)).structured_content == job
             assert (await client.call_tool("acquire_image", args)).structured_content == job
             listed = await client.call_tool("list_jobs", {"session_id": "test"})
