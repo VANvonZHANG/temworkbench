@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 Preview and acquire transmission electron microscopy (TEM) images with Instamatic's `simulate` configuration. Each acquisition saves a HyperSpy `.hspy` file and a TIFF. The web console, Jupyter, and MCP share the same acquisition jobs and SQLite event log.
 
-This release runs against a local simulator. The full acquisition workflow has been tested on Linux.
+This release runs against a local simulator. The full acquisition workflow has been tested on Linux. The Python package includes the compiled Solid Glass web console.
 
 ## Start the simulator
 
@@ -20,7 +20,7 @@ In PowerShell, run `$env:UV_PROJECT_ENVIRONMENT = ".venv-device"` before running
 
 Open `http://127.0.0.1:8765` and enter the operator token printed in the terminal. Use a session ID of up to 64 characters. Start with a lowercase letter or digit and use only lowercase letters, digits, underscores, and hyphens.
 
-Click **Start preview** or **Acquire and save**. You can add a note of up to 500 characters to an acquisition. The note is stored in `original_metadata.instamatic.ImageComment` in HyperSpy and in the TIFF's JSON image description. After capture, download either format from the console. The service saves both files under `run/datasets/session-<session-id>/<command-id>/` and keeps its event log at `run/events.sqlite3`.
+Click **Start preview** or **Acquire and save**. Live preview pauses while you acquire a frame and resumes when the acquisition finishes if the console is still visible and the device remains available. You can add a note of up to 500 characters to an acquisition. The note is stored in `original_metadata.instamatic.ImageComment` in HyperSpy and in the TIFF's JSON image description. After capture, download either format from the console. The service saves both files under `run/datasets/session-<session-id>/<command-id>/` and keeps its event log at `run/events.sqlite3`.
 
 Use `--data` to set the data folder, `--port` to set the port, or `--device-python` to specify the Python executable for the Instamatic environment. Set `TEMWORKBENCH_OPERATOR_TOKEN` and `TEMWORKBENCH_AGENT_TOKEN` to reuse tokens across restarts. The service binds to `127.0.0.1`.
 
@@ -54,6 +54,35 @@ Connect to `http://127.0.0.1:8765/mcp/` using the agent token as an HTTP bearer 
 When an agent requests a microscope adjustment, a connected operator can approve or reject it in the web console. The service waits up to 45 seconds. When the console stops reporting that the operator is online, pending approvals remain available for up to 15 more seconds.
 
 Click **Stop and blank beam** to cancel queued commands and pending approval requests. The service waits for the active device call to finish, then blanks the simulated beam. Restart the service to resume operation. The simulator starts in a fresh state, and published files and job records remain available.
+
+## Develop the web console
+
+The frontend uses React, TypeScript, Vite, shadcn/ui Base UI, and Tailwind CSS. Use Node.js 20.19+ on the 20.x line or 22.12+.
+
+Keep the Python service running on port 8765. In a second terminal, run:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open the URL printed by Vite. Vite forwards HTTP API and preview WebSocket traffic to the Python service.
+
+After changing the frontend, run `npm run build` from `frontend/` and include the updated files under
+`src/temworkbench/web/` in the same change. FastAPI serves these files and the Python package includes them.
+The Solid Glass revision is recorded in [Solid-Glass-REVISION](frontend/src/theme/Solid-Glass-REVISION).
+
+To run the browser checks, install both Python environments, then run:
+
+```sh
+cd frontend
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+The browser tests start a separate simulator on port 18765 with a temporary data directory. On Linux, run `bash tests/test-wheel.sh` from `frontend/` to install the wheel in a separate Python environment and run the same browser tests against it.
 
 ## Run the integration tests
 
