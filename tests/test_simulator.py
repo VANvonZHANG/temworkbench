@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -59,6 +60,20 @@ def finish(client, request):
             return job
         time.sleep(0.1)
     pytest.fail(f"Job {request['command_id']} did not finish")
+
+
+def test_web_entrypoint_serves_compiled_assets(app):
+    with TestClient(app) as client:
+        page = client.get("/").raise_for_status()
+        assert page.headers["content-type"].startswith("text/html")
+        assert 'id="root"' in page.text
+        assets = re.findall(r'(?:src|href)="(/workbench-assets/[^"]+)"', page.text)
+        for extension, content_type in ((".js", "javascript"), (".css", "text/css")):
+            path = next(asset for asset in assets if asset.endswith(extension))
+            asset = client.get(path).raise_for_status()
+            assert content_type in asset.headers["content-type"]
+            assert asset.content
+        assert client.get("/workbench-assets/missing.js").status_code == 404
 
 
 def test_preview_and_capture_survive_retry_and_restart(app):
