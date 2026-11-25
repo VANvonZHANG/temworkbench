@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TEM Workbench</title>
@@ -33,34 +33,34 @@ dd { margin: 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 740px) { #workspace:not([hidden]) { grid-template-columns: 1fr; } }
 </style>
 <header>
-  <h1>TEM Workbench <small class="muted">模拟器</small></h1>
-  <button id="stop" class="stop" hidden>停止并遮挡束斑</button>
+  <h1>TEM Workbench <small class="muted">Simulator</small></h1>
+  <button id="stop" class="stop" hidden>Stop and blank beam</button>
 </header>
 <form id="login">
-  <label>操作员令牌 <input id="token" type="password" required autocomplete="off"></label>
-  <label>会话 <input id="session" value="local" required pattern="[a-z0-9][a-z0-9_\-]{0,63}"></label>
-  <button class="primary">连接</button>
+  <label>Operator token <input id="token" type="password" required autocomplete="off"></label>
+  <label>Session ID <input id="session" value="local" required pattern="[a-z0-9][a-z0-9_\-]{0,63}"></label>
+  <button class="primary">Connect</button>
 </form>
 <p id="message" role="status"></p>
 <main id="workspace" hidden>
   <section>
-    <h2>相机预览</h2>
-    <figure><img id="image" alt="模拟相机画面" hidden><span id="blank" class="muted">预览已暂停</span></figure>
+    <h2>Camera preview</h2>
+    <figure><img id="image" alt="Simulated camera frame" hidden><span id="blank" class="muted">Preview paused</span></figure>
     <form id="camera">
-      <label>曝光（秒） <input id="exposure" type="number" min="0.01" max="2" step="any" value="0.1" required></label>
+      <label>Exposure (seconds) <input id="exposure" type="number" min="0.01" max="2" step="any" value="0.1" required></label>
       <label>Binning
         <select id="binning"><option>1</option><option>2</option><option>4</option></select>
       </label>
-      <label>采集备注（可选） <input id="comment" type="text" maxlength="500"></label>
-      <button id="live" type="button">开始预览</button>
-      <button id="capture" class="primary">取图保存</button>
+      <label>Acquisition note (optional) <input id="comment" type="text" maxlength="500"></label>
+      <button id="live" type="button">Start preview</button>
+      <button id="capture" class="primary">Acquire and save</button>
     </form>
     <p id="job" role="status"></p>
     <div id="downloads" class="actions"></div>
   </section>
   <aside>
-    <section><h2>镜体状态</h2><dl id="state"></dl></section>
-    <section><h2>操作审批</h2><div id="pending"><p class="muted">暂无待审批操作</p></div></section>
+    <section><h2>Microscope status</h2><dl id="state"></dl></section>
+    <section><h2>Operator approvals</h2><div id="pending"><p class="muted">No pending approvals</p></div></section>
   </aside>
 </main>
 <script>
@@ -68,9 +68,9 @@ const element = id => document.getElementById(id);
 const message = element("message");
 const camera = element("camera");
 const modes = {
-  acquire_image: "采集", set_magnification: "设置放大倍数",
-  set_brightness: "设置亮度", set_defocus: "设置离焦",
-  move_stage: "移动样品台",
+  acquire_image: "Acquire image", set_magnification: "Set magnification",
+  set_brightness: "Set brightness", set_defocus: "Set defocus",
+  move_stage: "Move stage",
 };
 let authorization, session, socket, previewTimer, previewUrl;
 let stopped = false;
@@ -83,7 +83,7 @@ async function api(path, options = {}, read = response => response.json()) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.detail === "string" ? body.detail : `请求失败（${response.status}）`);
+    throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`);
   }
   return read(response);
 }
@@ -94,11 +94,11 @@ function exposure() {
 
 function showState({device, stopped: halted, device_connected: connected}) {
   const rows = [
-    ["连接", connected ? "模拟器在线" : "模拟器离线"], ["模式", device.mode],
-    ["加速电压", `${device.beam_energy_kev} kV`], ["放大倍数", `${device.magnification}×`],
-    ["亮度", device.brightness], ["离焦（模拟器刻度）", device.defocus_ticks],
-    ["样品台（nm）", `${device.stage.x_nm}, ${device.stage.y_nm}, ${device.stage_z_nm}`],
-    ["束斑（空闲状态）", device.beam_blanked ? "遮挡" : "开放"],
+    ["Connection", connected ? "Simulator online" : "Simulator offline"], ["Mode", device.mode],
+    ["Accelerating voltage", `${device.beam_energy_kev} kV`], ["Magnification", `${device.magnification}×`],
+    ["Brightness", device.brightness], ["Defocus (ticks)", device.defocus_ticks],
+    ["Stage (nm)", `${device.stage.x_nm}, ${device.stage.y_nm}, ${device.stage_z_nm}`],
+    ["Beam (idle)", device.beam_blanked ? "Blanked" : "Unblanked"],
   ];
   element("state").replaceChildren(...rows.flatMap(([label, value]) => {
     const dt = document.createElement("dt");
@@ -119,7 +119,7 @@ function showApprovals(jobs) {
   if (!jobs.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
-    empty.textContent = "暂无待审批操作";
+    empty.textContent = "No pending approvals";
     pending.replaceChildren(empty);
     return;
   }
@@ -130,7 +130,7 @@ function showApprovals(jobs) {
     line.textContent = `${job.session_id} · ${modes[kind]} · ${JSON.stringify(parameters)}`;
     const controls = document.createElement("div");
     controls.className = "actions";
-    for (const [label, allow] of [["批准", true], ["拒绝", false]]) {
+    for (const [label, allow] of [["Approve", true], ["Reject", false]]) {
       const button = document.createElement("button");
       button.textContent = label;
       button.onclick = async () => {
@@ -189,7 +189,7 @@ function pausePreview() {
     socket.close();
     socket = undefined;
   }
-  element("live").textContent = "开始预览";
+  element("live").textContent = "Start preview";
 }
 element("live").onclick = () => {
   if (socket) return pausePreview();
@@ -199,7 +199,7 @@ element("live").onclick = () => {
   const connection = new WebSocket(address);
   socket = connection;
   connection.binaryType = "blob";
-  element("live").textContent = "暂停预览";
+  element("live").textContent = "Pause preview";
   function requestFrame() {
     if (socket !== connection || connection.readyState !== WebSocket.OPEN) return;
     if (document.hidden || !camera.checkValidity()) {
@@ -221,7 +221,7 @@ element("live").onclick = () => {
     }
     previewTimer = setTimeout(requestFrame, 250);
   };
-  connection.onclose = () => { message.textContent = "预览连接已关闭"; pausePreview(); };
+  connection.onclose = () => { message.textContent = "Preview connection closed"; pausePreview(); };
 };
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) pausePreview();
@@ -243,7 +243,7 @@ camera.onsubmit = async event => {
   button.disabled = true;
   button.dataset.busy = "true";
   message.textContent = "";
-  label.textContent = "正在提交采集…";
+  label.textContent = "Submitting acquisition…";
   downloads.replaceChildren();
   const commandId = crypto.randomUUID();
   try {
@@ -259,21 +259,21 @@ camera.onsubmit = async event => {
     }
     const path = `/api/jobs/${session}/${commandId}`;
     while (["queued", "running"].includes(result.status)) {
-      label.textContent = result.status === "queued" ? "等待采集…" : "正在采集和保存…";
+      label.textContent = result.status === "queued" ? "Waiting for acquisition…" : "Acquiring and saving…";
       await delay(400);
       result = await api(path);
     }
     if (result.status !== "succeeded") throw new Error(result.error || result.status);
-    label.textContent = `已保存 · ${commandId}`;
+    label.textContent = `Saved · ${commandId}`;
     for (const format of ["hspy", "tiff"]) {
       const link = document.createElement("button");
-      link.textContent = `下载 ${format.toUpperCase()}`;
+      link.textContent = `Download ${format.toUpperCase()}`;
       link.onclick = () => download(`${path}/files/${format}`, `${commandId}.${format}`)
         .catch(error => { message.textContent = error.message; });
       downloads.append(link);
     }
   } catch (error) {
-    label.textContent = `采集未完成 · ${commandId}`;
+    label.textContent = `Acquisition failed · ${commandId}`;
     message.textContent = error.message;
   } finally {
     button.dataset.busy = "false";
@@ -285,7 +285,7 @@ element("stop").onclick = async () => {
     pausePreview();
     await api("/api/operator/stop", {method: "POST"});
     await refresh();
-    message.textContent = "已停止。重启服务后可重新采集。";
+    message.textContent = "Stopped. Restart the service to resume acquisition.";
   } catch (error) {
     message.textContent = error.message;
   }

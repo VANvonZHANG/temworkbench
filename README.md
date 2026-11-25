@@ -20,7 +20,7 @@ In PowerShell, run `$env:UV_PROJECT_ENVIRONMENT = ".venv-device"` before running
 
 Open `http://127.0.0.1:8765` and enter the operator token printed in the terminal. Use a session ID of up to 64 characters. Start with a lowercase letter or digit and use only lowercase letters, digits, underscores, and hyphens.
 
-Click **开始预览** (Start preview) or **取图保存** (Acquire and save). You can add a note of up to 500 characters to an acquisition. The note is stored in `original_metadata.instamatic.ImageComment` in HyperSpy and in the TIFF's JSON image description. After capture, download either format from the console. The service saves both files under `run/datasets/session-<session-id>/<command-id>/` and keeps its event log at `run/events.sqlite3`.
+Click **Start preview** or **Acquire and save**. You can add a note of up to 500 characters to an acquisition. The note is stored in `original_metadata.instamatic.ImageComment` in HyperSpy and in the TIFF's JSON image description. After capture, download either format from the console. The service saves both files under `run/datasets/session-<session-id>/<command-id>/` and keeps its event log at `run/events.sqlite3`.
 
 Use `--data` to set the data folder, `--port` to set the port, or `--device-python` to specify the Python executable for the Instamatic environment. Set `TEMWORKBENCH_OPERATOR_TOKEN` and `TEMWORKBENCH_AGENT_TOKEN` to reuse tokens across restarts. The service binds to `127.0.0.1`.
 
@@ -53,7 +53,7 @@ Connect to `http://127.0.0.1:8765/mcp/` using the agent token as an HTTP bearer 
 
 When an agent requests a microscope adjustment, a connected operator can approve or reject it in the web console. The service waits up to 45 seconds. When the console stops reporting that the operator is online, pending approvals remain available for up to 15 more seconds.
 
-Click **停止并遮挡束斑** (Stop and blank beam) to cancel queued commands and pending approval requests. The service waits for the active device call to finish, then blanks the simulated beam. Restart the service to resume operation. The simulator starts in a fresh state, and published files and job records remain available.
+Click **Stop and blank beam** to cancel queued commands and pending approval requests. The service waits for the active device call to finish, then blanks the simulated beam. Restart the service to resume operation. The simulator starts in a fresh state, and published files and job records remain available.
 
 ## Run the integration tests
 
