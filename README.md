@@ -1,12 +1,14 @@
 # TEM Workbench
 
-用 Instamatic 的 `simulate` 配置预览和采集透射电镜图像。每次采集同时保存 HyperSpy `.hspy` 和 TIFF。网页、Jupyter 和 MCP 共用一套采集任务及 SQLite 事件日志。
+English | [简体中文](README.zh-CN.md)
 
-当前版本面向本机模拟器。完整采集流程已在 Linux 验证。
+Preview and acquire transmission electron microscopy (TEM) images with Instamatic's `simulate` configuration. Each acquisition saves a HyperSpy `.hspy` file and a TIFF. The web console, Jupyter, and MCP share the same acquisition jobs and SQLite event log.
 
-## 启动模拟器
+This release runs against a local simulator. The full acquisition workflow has been tested on Linux.
 
-在项目根目录运行以下命令。控制服务和 Instamatic 使用两个 Python 3.11 环境。
+## Start the simulator
+
+Run these commands from the project root. The control service and Instamatic use separate Python 3.11 environments.
 
 ```sh
 uv sync --locked --python 3.11
@@ -14,15 +16,17 @@ UV_PROJECT_ENVIRONMENT=.venv-device uv sync --locked --only-group device --pytho
 uv run --locked temworkbench
 ```
 
-PowerShell 中先运行 `$env:UV_PROJECT_ENVIRONMENT = ".venv-device"`，再执行带 `--only-group device` 的命令。随后用 `Remove-Item Env:UV_PROJECT_ENVIRONMENT` 恢复主环境。
+In PowerShell, run `$env:UV_PROJECT_ENVIRONMENT = ".venv-device"` before running the `uv sync` command with `--only-group device`. Then run `Remove-Item Env:UV_PROJECT_ENVIRONMENT` before starting the service.
 
-打开 `http://127.0.0.1:8765`，填入终端显示的操作员令牌。会话使用小写字母、数字、下划线或连字符，开头为字母或数字，最长 64 个字符。点击 **开始预览** 或 **取图保存**。采集可附备注，最多 500 字符。备注保存在 HyperSpy 的 `original_metadata.instamatic.ImageComment` 和 TIFF 的 JSON 图像描述中。采集成功后可下载两种文件。结果也保存在 `run/datasets/session-<会话>/<命令 ID>/`，日志位于 `run/events.sqlite3`。
+Open `http://127.0.0.1:8765` and enter the operator token printed in the terminal. Use a session ID of up to 64 characters. Start with a lowercase letter or digit and use only lowercase letters, digits, underscores, and hyphens.
 
-可用 `--data` 指定数据目录，`--port` 指定端口，`--device-python` 指定独立环境的 Python。设置 `TEMWORKBENCH_OPERATOR_TOKEN` 和 `TEMWORKBENCH_AGENT_TOKEN` 可以在重启时使用固定令牌。服务绑定 `127.0.0.1`。
+Click **开始预览** (Start preview) or **取图保存** (Acquire and save). You can add a note of up to 500 characters to an acquisition. The note is stored in `original_metadata.instamatic.ImageComment` in HyperSpy and in the TIFF's JSON image description. After capture, download either format from the console. The service saves both files under `run/datasets/session-<session-id>/<command-id>/` and keeps its event log at `run/events.sqlite3`.
 
-## 在 Jupyter 中采集和读取
+Use `--data` to set the data folder, `--port` to set the port, or `--device-python` to specify the Python executable for the Instamatic environment. Set `TEMWORKBENCH_OPERATOR_TOKEN` and `TEMWORKBENCH_AGENT_TOKEN` to reuse tokens across restarts. The service binds to `127.0.0.1`.
 
-运行 `uv sync --locked --group notebook`，再运行 `uv run --locked --group notebook jupyter lab`。在 Python 3.11 内核中执行：
+## Acquire and load images in Jupyter
+
+Run `uv sync --locked --group notebook`. Start JupyterLab with `uv run --locked --group notebook jupyter lab` and run the following in a Python 3.11 kernel.
 
 ```python
 from getpass import getpass
@@ -30,9 +34,9 @@ from getpass import getpass
 from temworkbench.client import Client
 from temworkbench.models import MoveStage
 
-with Client(getpass("操作员令牌："), "notebook") as tem:
+with Client(getpass("Operator token: "), "notebook") as tem:
     print(tem.state())
-    job = tem.wait(tem.acquire(exposure_s=0.1, binning=2, comment="网格 A3"))
+    job = tem.wait(tem.acquire(exposure_s=0.1, binning=2, comment="Grid A3"))
     signal = tem.load(job)
     print(signal.metadata.Acquisition_instrument.TEM)
     signal.plot()
@@ -41,24 +45,26 @@ with Client(getpass("操作员令牌："), "notebook") as tem:
     print(tem.wait(tem.submit(move)).status)
 ```
 
-放大倍数从 `state()["device"]["magnifications"]` 取值。亮度使用 Instamatic 原始刻度。离焦使用模拟物镜细调零点的偏移刻度。样品台只接受绝对 X、Y 坐标，单位为 nm。
+Read the available magnifications from `state()["device"]["magnifications"]`. Brightness uses the raw Instamatic scale. Defocus uses ticks relative to the simulated objective fine-focus zero. Stage moves use absolute X and Y coordinates in nanometers.
 
-## 从 MCP 取图或请求调整
+## Acquire images or request adjustments through MCP
 
-连接 `http://127.0.0.1:8765/mcp/`，使用 HTTP Bearer agent 令牌。调用 `get_state`、`acquire_image`、`get_job`、`list_jobs` 或 `request_change`。每次调用提供显式的 `session_id`。采集和调整请求另带 UUID `command_id`，重试时沿用原 ID 和参数。`acquire_image` 接受可选的 `comment`。采集返回任务，完成后可从 `get_job` 取得文件路径。
+Connect to `http://127.0.0.1:8765/mcp/` using the agent token as an HTTP bearer token. Use `get_state`, `acquire_image`, `get_job`, `list_jobs`, or `request_change`. Pass a `session_id` on every call. For acquisitions and adjustment requests, also pass a UUID as `command_id`. Reuse the same ID and parameters when retrying. `acquire_image` accepts an optional `comment` and returns a job. After the job succeeds, use `get_job` to find the output paths.
 
-代理请求调整镜体时，已连接的操作员可在网页上批准或拒绝。服务最多等待 45 秒。网页停止报告操作员在线后，批准窗口最多再保留 15 秒。**停止并遮挡束斑** 取消待执行命令和待审批请求，等待正在运行的设备调用结束，再遮挡模拟束斑。重启服务可恢复操作。模拟器从新状态启动，已经发布的文件和任务记录可继续查询。
+When an agent requests a microscope adjustment, a connected operator can approve or reject it in the web console. The service waits up to 45 seconds. When the console stops reporting that the operator is online, pending approvals remain available for up to 15 more seconds.
 
-## 运行集成测试
+Click **停止并遮挡束斑** (Stop and blank beam) to cancel queued commands and pending approval requests. The service waits for the active device call to finish, then blanks the simulated beam. Restart the service to resume operation. The simulator starts in a fresh state, and published files and job records remain available.
 
-先安装两个环境，然后运行：
+## Run the integration tests
+
+Install both environments, then run the tests from the project root.
 
 ```sh
 uv run --locked pytest
 ```
 
-采集界面与命令的真机校准、限幅及急停要在接入具体电镜和相机时验证。
+Calibration, movement limits, and stop behavior still need validation on the target microscope and camera.
 
-## 许可证
+## License
 
-TEM Workbench 采用 [GNU GPL v3.0（仅此版本）](LICENSE)。
+TEM Workbench is licensed under the [GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`).
