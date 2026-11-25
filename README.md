@@ -2,6 +2,8 @@
 
 用 Instamatic 的 `simulate` 配置预览和采集透射电镜图像。每次采集同时保存 HyperSpy `.hspy` 和 TIFF。网页、Jupyter 和 MCP 共用一套采集任务及 SQLite 事件日志。
 
+当前版本面向本机模拟器。完整采集流程已在 Linux 验证。
+
 ## 启动模拟器
 
 在项目根目录运行以下命令。控制服务和 Instamatic 使用两个 Python 3.11 环境。
@@ -55,4 +57,8 @@ with Client(getpass("操作员令牌："), "notebook") as tem:
 uv run --locked pytest
 ```
 
-本版本面向本机模拟器。采集界面与命令的真机校准、限幅及急停要在接入具体电镜和相机时验证。
+采集界面与命令的真机校准、限幅及急停要在接入具体电镜和相机时验证。
+
+## 许可证
+
+TEM Workbench 采用 [GNU GPL v3.0（仅此版本）](LICENSE)。
