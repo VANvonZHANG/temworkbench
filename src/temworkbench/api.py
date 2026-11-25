@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastmcp import FastMCP
 from filelock import FileLock
 from pydantic import ValidationError
@@ -158,9 +159,12 @@ def build_app(root: Path, device_python: Path, operator_token: str, agent_token:
     async def offline(_request, error):
         return JSONResponse({"detail": str(error)}, status_code=503)
 
+    web_root = Path(__file__).with_name("web")
+    app.mount("/workbench-assets", StaticFiles(directory=web_root / "workbench-assets"))
+
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(Path(__file__).with_name("index.html"))
+        return FileResponse(web_root / "index.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/state")
     def state(session_id: SessionId, _actor: Authenticated) -> dict:
